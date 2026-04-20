@@ -30,8 +30,12 @@ JIRA_PROJECT_KEY: str = os.environ["JIRA_PROJECT_KEY"]
 GOOGLE_SHEET_ID: str = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_SA_JSON_PATH: str = os.environ["GOOGLE_SA_JSON_PATH"]
 
-# Optional — Slack notifications sent only if this is set
-SLACK_WEBHOOK_URL: str | None = os.getenv("SLACK_WEBHOOK_URL") or None
+# Optional — email notifications sent only when all three are set
+NOTIFY_EMAIL_SENDER: str | None = os.getenv("NOTIFY_EMAIL_SENDER") or None
+NOTIFY_EMAIL_PASSWORD: str | None = os.getenv("NOTIFY_EMAIL_PASSWORD") or None
+NOTIFY_EMAIL_TO: str | None = os.getenv("NOTIFY_EMAIL_TO") or None
+NOTIFY_EMAIL_SMTP_HOST: str = os.getenv("NOTIFY_EMAIL_SMTP_HOST", "smtp.gmail.com")
+NOTIFY_EMAIL_SMTP_PORT: int = int(os.getenv("NOTIFY_EMAIL_SMTP_PORT", "587"))
 
 # Google Sheets tab names
 SHEET_TAB_CONFIG = "Onboarding Templates"

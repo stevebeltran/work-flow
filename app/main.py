@@ -4,8 +4,8 @@ import pandas as pd
 import app.hubspot_client as hs
 import app.jira_client as jira
 import app.sheets_client as sheets
-import app.slack_client as slack
-from app.config import JIRA_BASE_URL, HUBSPOT_TOKEN, SLACK_WEBHOOK_URL
+import app.email_client as email_client
+from app.config import JIRA_BASE_URL, HUBSPOT_TOKEN, NOTIFY_EMAIL_TO
 from app.utils import format_timestamp
 
 st.set_page_config(
@@ -22,9 +22,9 @@ with st.sidebar:
     st.write("**HubSpot**", ":white_check_mark: API" if HUBSPOT_TOKEN else ":file_folder: CSV mode")
     st.write("**Jira**", ":white_check_mark: Connected")
     st.write("**Google Sheets**", ":white_check_mark: Connected")
-    st.write("**Slack**", ":white_check_mark: Enabled" if SLACK_WEBHOOK_URL else ":mute: Disabled")
+    st.write("**Email alerts**", ":white_check_mark: Enabled" if NOTIFY_EMAIL_TO else ":mute: Disabled")
     st.divider()
-    st.caption("Set SLACK_WEBHOOK_URL in .env to enable Slack notifications.")
+    st.caption("Set NOTIFY_EMAIL_* in .env to enable email notifications.")
     if not HUBSPOT_TOKEN:
         st.caption("Set HUBSPOT_PRIVATE_APP_TOKEN in .env to enable live HubSpot search.")
 
@@ -132,15 +132,15 @@ def run_ticket_creation(deal: dict, actor_email: str) -> None:
 
         # Slack
         try:
-            slack.send_onboarding_notification(
+            email_client.send_onboarding_notification(
                 customer_name=deal["deal_name"],
                 epic_key=epic_key,
                 jira_url=jira_url,
                 subtask_keys=subtask_keys,
                 actor_email=actor_email,
             )
-            if SLACK_WEBHOOK_URL:
-                st.caption("Slack notification sent.")
+            if NOTIFY_EMAIL_TO:
+                st.caption(f"Email notification sent to {NOTIFY_EMAIL_TO}.")
         except Exception:
             pass
 
@@ -324,7 +324,7 @@ with tab_dashboard:
                             updated += 1
                             # Notify Slack if status changed
                             if old_status != new_status:
-                                slack.send_status_change_notification(
+                                email_client.send_status_change_notification(
                                     customer_name=customer,
                                     epic_key=epic_key,
                                     jira_url=jira_url,
