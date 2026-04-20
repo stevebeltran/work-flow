@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 import pandas as pd
 
@@ -20,7 +24,7 @@ st.title("🚁 Brinc Drones Customer Workflow")
 # ── Sidebar status indicators ─────────────────────────────────────────────────
 with st.sidebar:
     st.header("Integration Status")
-    st.write("**HubSpot**", ":white_check_mark: API" if HUBSPOT_TOKEN else ":file_folder: CSV mode")
+    st.write("**HubSpot**", ":white_check_mark: API" if HUBSPOT_TOKEN else ":pencil: Manual / CSV mode")
     st.write("**Jira**", ":white_check_mark: Connected")
     st.write("**Google Sheets**", ":white_check_mark: Connected")
     st.write("**Google Doc**", ":white_check_mark: Template set" if GOOGLE_DOC_TEMPLATE_ID else ":mute: Disabled")
@@ -206,25 +210,22 @@ def run_ticket_creation(deal: dict, actor_email: str) -> None:
 with tab_onboard:
     st.header("Onboard a New Customer")
 
-    # ── Section 1: Find a deal (API or CSV) ──────────────────────────────────
-    st.subheader("1. Find a HubSpot Deal")
+    # ── Section 1: Find a deal ────────────────────────────────────────────────
+    st.subheader("1. Find or Enter a Customer")
+
+    _api_option = "Search HubSpot API"
+    _csv_option = "Upload CSV export"
+    _manual_option = "Enter manually"
 
     if HUBSPOT_TOKEN:
-        input_mode = st.radio(
-            "Source",
-            ["Search HubSpot API", "Upload CSV export"],
-            horizontal=True,
-            label_visibility="collapsed",
-        )
+        _modes = [_api_option, _csv_option, _manual_option]
     else:
-        st.info(
-            "HubSpot API token not configured. Using CSV upload mode.  \n"
-            "Export your deals from HubSpot: **CRM → Deals → Actions → Export**"
-        )
-        input_mode = "Upload CSV export"
+        _modes = [_manual_option, _csv_option]
+
+    input_mode = st.radio("Source", _modes, horizontal=True, label_visibility="collapsed")
 
     # ── API search ────────────────────────────────────────────────────────────
-    if input_mode == "Search HubSpot API":
+    if input_mode == _api_option:
         col_search, col_btn = st.columns([4, 1])
         with col_search:
             query = st.text_input("Search by deal name", placeholder="e.g. Acme Corp")
@@ -255,7 +256,7 @@ with tab_onboard:
             st.info("No deals found. Try a different search term.")
 
     # ── CSV upload ────────────────────────────────────────────────────────────
-    else:
+    elif input_mode == _csv_option:
         uploaded = st.file_uploader(
             "Upload HubSpot deals export (.csv)",
             type=["csv"],
@@ -292,6 +293,34 @@ with tab_onboard:
                 st.session_state["selected_deal"] = deal_options[selected_label]
             else:
                 st.info("No matching deals.")
+
+    # ── Manual entry ──────────────────────────────────────────────────────────
+    elif input_mode == _manual_option:
+        with st.form("manual_entry_form"):
+            st.write("Enter the customer details:")
+            col1, col2 = st.columns(2)
+            with col1:
+                m_deal_name     = st.text_input("Customer / Deal name *", placeholder="Acme Corp")
+                m_contact_name  = st.text_input("Contact name",           placeholder="Jane Smith")
+            with col2:
+                m_contact_email = st.text_input("Contact email",          placeholder="jane@acme.com")
+                m_deal_stage    = st.text_input("Deal stage",             placeholder="Closed Won")
+
+            submitted = st.form_submit_button("Confirm Customer", type="primary")
+
+        if submitted:
+            if not m_deal_name.strip():
+                st.warning("Customer / Deal name is required.")
+            else:
+                st.session_state["selected_deal"] = {
+                    "deal_id":       f"manual_{m_deal_name.strip().lower().replace(' ', '_')}",
+                    "deal_name":     m_deal_name.strip(),
+                    "contact_name":  m_contact_name.strip(),
+                    "contact_email": m_contact_email.strip(),
+                    "deal_stage":    m_deal_stage.strip(),
+                    "owner_id":      "",
+                }
+                st.success(f"Customer set to **{m_deal_name.strip()}**")
 
     # ── Section 2: Deal summary + ticket preview ──────────────────────────────
     deal = st.session_state.get("selected_deal")
