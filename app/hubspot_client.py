@@ -1,3 +1,5 @@
+import io
+import pandas as pd
 from hubspot import Client
 from hubspot.crm.deals import ApiException
 
@@ -102,6 +104,58 @@ def get_all_won_deals() -> list[dict]:
         raise HubSpotError(f"HubSpot fetch failed: {e.status} {e.reason}") from e
     except Exception as e:
         raise HubSpotError(f"HubSpot error: {e}") from e
+
+
+def parse_deals_csv(file_bytes: bytes) -> list[dict]:
+    """
+    Parse a HubSpot deals CSV export into the same deal dict format used by
+    search_deals(). Handles the column names HubSpot uses in its exports.
+
+    Expected columns (HubSpot default export names):
+      Record ID, Deal Name, Deal Stage, Deal Owner,
+      Contact: First Name, Contact: Last Name, Contact: Email
+    Also accepts lowercase/snake_case variants.
+    """
+    df = pd.read_csv(io.BytesIO(file_bytes), dtype=str).fillna("")
+
+    # Normalise column names: lower + strip
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # Column name aliases — HubSpot exports vary by account/view
+    def _col(df, *candidates):
+        for c in candidates:
+            if c in df.columns:
+                return df[c]
+        return pd.Series([""] * len(df))
+
+    deals = []
+    for _, row in df.iterrows():
+        deal_id   = _col(df, "record id", "deal id", "id", "hs_object_id").iloc[row.name] or f"csv_{row.name}"
+        deal_name = _col(df, "deal name", "dealname", "name").iloc[row.name]
+        stage     = _col(df, "deal stage", "dealstage", "stage").iloc[row.name]
+        owner     = _col(df, "deal owner", "hubspot owner name", "owner").iloc[row.name]
+        fname     = _col(df, "contact: first name", "first name", "firstname").iloc[row.name]
+        lname     = _col(df, "contact: last name", "last name", "lastname").iloc[row.name]
+        email     = _col(df, "contact: email", "email", "contact email").iloc[row.name]
+
+        if not deal_name:
+            continue  # skip blank rows
+
+        deals.append({
+            "deal_id": str(deal_id).strip(),
+            "deal_name": deal_name.strip(),
+            "deal_stage": stage.strip(),
+            "owner_id": owner.strip(),
+            "contact_name": f"{fname} {lname}".strip(),
+            "contact_email": email.strip(),
+        })
+    return deals
+
+
+def search_deals_csv(query: str, deals: list[dict]) -> list[dict]:
+    """Filter an already-parsed CSV deal list by deal name (case-insensitive)."""
+    q = query.lower()
+    return [d for d in deals if q in d["deal_name"].lower()]
 
 
 def _enrich_with_contacts(client: Client, deals: list[dict]) -> list[dict]:

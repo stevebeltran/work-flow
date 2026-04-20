@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# These are always required
 _REQUIRED = [
-    "HUBSPOT_PRIVATE_APP_TOKEN",
     "JIRA_BASE_URL",
     "JIRA_USER_EMAIL",
     "JIRA_API_TOKEN",
@@ -20,13 +20,18 @@ if _missing:
         "Copy .env.example to .env and fill in your credentials."
     )
 
-HUBSPOT_TOKEN: str = os.environ["HUBSPOT_PRIVATE_APP_TOKEN"]
+# Optional — app falls back to CSV upload if not set
+HUBSPOT_TOKEN: str | None = os.getenv("HUBSPOT_PRIVATE_APP_TOKEN") or None
+
 JIRA_BASE_URL: str = os.environ["JIRA_BASE_URL"].rstrip("/")
 JIRA_USER_EMAIL: str = os.environ["JIRA_USER_EMAIL"]
 JIRA_API_TOKEN: str = os.environ["JIRA_API_TOKEN"]
 JIRA_PROJECT_KEY: str = os.environ["JIRA_PROJECT_KEY"]
 GOOGLE_SHEET_ID: str = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_SA_JSON_PATH: str = os.environ["GOOGLE_SA_JSON_PATH"]
+
+# Optional — Slack notifications sent only if this is set
+SLACK_WEBHOOK_URL: str | None = os.getenv("SLACK_WEBHOOK_URL") or None
 
 # Google Sheets tab names
 SHEET_TAB_CONFIG = "Onboarding Templates"
