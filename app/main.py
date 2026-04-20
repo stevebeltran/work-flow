@@ -5,7 +5,8 @@ import app.hubspot_client as hs
 import app.jira_client as jira
 import app.sheets_client as sheets
 import app.email_client as email_client
-from app.config import JIRA_BASE_URL, HUBSPOT_TOKEN, NOTIFY_EMAIL_TO
+import app.docs_client as docs_client
+from app.config import JIRA_BASE_URL, HUBSPOT_TOKEN, NOTIFY_EMAIL_TO, GOOGLE_DOC_TEMPLATE_ID
 from app.utils import format_timestamp
 
 st.set_page_config(
@@ -22,6 +23,7 @@ with st.sidebar:
     st.write("**HubSpot**", ":white_check_mark: API" if HUBSPOT_TOKEN else ":file_folder: CSV mode")
     st.write("**Jira**", ":white_check_mark: Connected")
     st.write("**Google Sheets**", ":white_check_mark: Connected")
+    st.write("**Google Doc**", ":white_check_mark: Template set" if GOOGLE_DOC_TEMPLATE_ID else ":mute: Disabled")
     st.write("**Email alerts**", ":white_check_mark: Enabled" if NOTIFY_EMAIL_TO else ":mute: Disabled")
     st.divider()
     st.caption("Set NOTIFY_EMAIL_* in .env to enable email notifications.")
@@ -150,6 +152,38 @@ def run_ticket_creation(deal: dict, actor_email: str) -> None:
             st.caption("Dashboard and audit log updated in Google Sheets.")
         except Exception as e:
             st.warning(f"Sheets update failed (tickets were still created in Jira): {e}")
+
+        # Google Doc
+        doc_url = ""
+        if GOOGLE_DOC_TEMPLATE_ID:
+            try:
+                doc_url = docs_client.create_customer_doc(
+                    customer_name=deal["deal_name"],
+                    deal_id=deal["deal_id"],
+                    contact_name=deal.get("contact_name", ""),
+                    contact_email=deal.get("contact_email", ""),
+                    deal_stage=deal.get("deal_stage", ""),
+                    epic_keys=all_epics_str,
+                )
+                st.success(f"Customer doc created: [Open Doc]({doc_url})")
+                # Update dashboard row with doc link
+                sheets.upsert_dashboard_row({
+                    **{
+                        "deal_id": deal["deal_id"],
+                        "customer_name": deal["deal_name"],
+                        "contact_email": deal.get("contact_email", ""),
+                        "deal_stage": deal.get("deal_stage", ""),
+                        "deal_owner": deal.get("owner_id", ""),
+                        "epic_key": all_epics_str,
+                        "epic_status": "To Do",
+                        "tickets_created_at": format_timestamp(),
+                        "tickets_created_by": actor_email,
+                        "jira_url": primary_url,
+                    },
+                    "doc_url": doc_url,
+                })
+            except Exception as e:
+                st.warning(f"Doc creation failed (tickets were still created): {e}")
 
         # Email
         try:
@@ -389,12 +423,14 @@ with tab_dashboard:
 
         display_cols = [c for c in [
             "customer_name", "contact_email", "deal_stage",
-            "epic_key", "epic_status", "tickets_created_at", "tickets_created_by", "jira_url",
+            "epic_key", "epic_status", "tickets_created_at", "tickets_created_by", "jira_url", "doc_url",
         ] if c in df.columns]
 
         column_config = {}
         if "jira_url" in df.columns:
             column_config["jira_url"] = st.column_config.LinkColumn("Jira Link", display_text="Open in Jira")
+        if "doc_url" in df.columns:
+            column_config["doc_url"] = st.column_config.LinkColumn("Onboarding Doc", display_text="Open Doc")
         if "customer_name" in df.columns:
             column_config["customer_name"] = st.column_config.TextColumn("Customer")
         if "epic_key" in df.columns:

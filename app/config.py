@@ -30,6 +30,9 @@ JIRA_PROJECT_KEY: str = os.environ["JIRA_PROJECT_KEY"]
 GOOGLE_SHEET_ID: str = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_SA_JSON_PATH: str = os.environ["GOOGLE_SA_JSON_PATH"]
 
+# Optional — Google Doc template to copy per customer
+GOOGLE_DOC_TEMPLATE_ID: str | None = os.getenv("GOOGLE_DOC_TEMPLATE_ID") or None
+
 # Optional — email notifications sent only when all three are set
 NOTIFY_EMAIL_SENDER: str | None = os.getenv("NOTIFY_EMAIL_SENDER") or None
 NOTIFY_EMAIL_PASSWORD: str | None = os.getenv("NOTIFY_EMAIL_PASSWORD") or None
