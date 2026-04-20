@@ -1,7 +1,9 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Always resolve paths relative to the project root (where .env lives)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(_PROJECT_ROOT, ".env"))
 
 # These are always required
 _REQUIRED = [
@@ -28,7 +30,7 @@ JIRA_USER_EMAIL: str = os.environ["JIRA_USER_EMAIL"]
 JIRA_API_TOKEN: str = os.environ["JIRA_API_TOKEN"]
 JIRA_PROJECT_KEY: str = os.environ["JIRA_PROJECT_KEY"]
 GOOGLE_SHEET_ID: str = os.environ["GOOGLE_SHEET_ID"]
-GOOGLE_SA_JSON_PATH: str = os.environ["GOOGLE_SA_JSON_PATH"]
+GOOGLE_SA_JSON_PATH: str = os.path.join(_PROJECT_ROOT, os.environ["GOOGLE_SA_JSON_PATH"])
 
 # Optional — Google Doc template to copy per customer
 GOOGLE_DOC_TEMPLATE_ID: str | None = os.getenv("GOOGLE_DOC_TEMPLATE_ID") or None

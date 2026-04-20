@@ -339,7 +339,9 @@ with tab_onboard:
                 templates = sheets.get_onboarding_templates()
                 st.session_state["_templates"] = templates
             except Exception as e:
+                import traceback
                 st.error(f"Could not load templates from Google Sheets: {e}")
+                st.code(traceback.format_exc())
                 templates = []
                 st.session_state["_templates"] = []
 
