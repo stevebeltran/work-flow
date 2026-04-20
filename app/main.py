@@ -48,46 +48,58 @@ def run_ticket_creation(deal: dict, actor_email: str) -> None:
         deal_id=deal["deal_id"],
     )
 
-    epic_key = None
-    subtask_keys: list[str] = []
-    errors: list[str] = []
-    total_steps = 1 + len(preview)
+    project_keys = list(dict.fromkeys(t["project_key"] for t in preview))
+    total_steps = len(project_keys) + len(preview)
     progress = st.progress(0, text="Starting...")
+    step = 0
 
     with st.status("Creating Jira tickets...", expanded=True) as status_box:
-        st.write(f"Creating Epic for **{deal['deal_name']}**...")
-        try:
-            epic_key = jira.create_epic(
-                customer_name=deal["deal_name"],
-                deal_id=deal["deal_id"],
-            )
-            st.write(f"Epic created: `{epic_key}`")
-            progress.progress(1 / total_steps, text=f"Epic {epic_key} created")
-        except jira.JiraError as e:
-            errors.append(str(e))
-            st.error(f"Epic creation failed: {e}")
+        st.write(f"Projects: **{', '.join(project_keys)}**")
 
-        if epic_key:
-            for i, ticket in enumerate(preview, start=1):
-                st.write(f"Creating task: _{ticket['summary']}_")
-                try:
-                    key = jira.create_subtask(
-                        epic_key=epic_key,
-                        summary=ticket["summary"],
-                        description=ticket["description"],
-                        assignee_email=ticket["assignee_email"] or None,
-                    )
-                    subtask_keys.append(key)
-                    progress.progress((1 + i) / total_steps, text=f"Created {key}")
-                except jira.JiraError as e:
-                    errors.append(f"Task {ticket['step']}: {e}")
-                    st.warning(f"Task {ticket['step']} failed: {e}")
+        result = {"epics": {}, "subtask_keys": [], "errors": []}
 
-        if errors and not epic_key:
+        # Create epics
+        for proj in project_keys:
+            st.write(f"Creating Epic in **{proj}** for {deal['deal_name']}...")
+            try:
+                epic_key = jira.create_epic(deal["deal_name"], deal["deal_id"], project_key=proj)
+                result["epics"][proj] = epic_key
+                step += 1
+                progress.progress(step / total_steps, text=f"Epic {epic_key} created")
+                st.write(f"Epic created: `{epic_key}`")
+            except jira.JiraError as e:
+                result["errors"].append(f"Epic ({proj}): {e}")
+                st.error(f"Epic creation failed for {proj}: {e}")
+
+        # Create tasks
+        for ticket in preview:
+            proj = ticket["project_key"]
+            epic_key = result["epics"].get(proj)
+            if not epic_key:
+                result["errors"].append(f"Skipped '{ticket['summary']}' — no epic for {proj}")
+                step += 1
+                continue
+            st.write(f"[{proj}] Creating task: _{ticket['summary']}_")
+            try:
+                key = jira.create_subtask(
+                    epic_key=epic_key,
+                    summary=ticket["summary"],
+                    description=ticket["description"],
+                    assignee_email=ticket["assignee_email"] or None,
+                    project_key=proj,
+                )
+                result["subtask_keys"].append(key)
+                step += 1
+                progress.progress(step / total_steps, text=f"Created {key}")
+            except jira.JiraError as e:
+                result["errors"].append(f"Task {ticket['step']} ({proj}): {e}")
+                st.warning(f"Task {ticket['step']} failed: {e}")
+
+        if result["errors"] and not result["epics"]:
             status_box.update(label="Failed — no tickets created", state="error")
-        elif errors:
+        elif result["errors"]:
             status_box.update(
-                label=f"Partial — {len(subtask_keys)}/{len(preview)} tasks created",
+                label=f"Partial — {len(result['subtask_keys'])}/{len(preview)} tasks created",
                 state="error",
             )
         else:
@@ -95,12 +107,21 @@ def run_ticket_creation(deal: dict, actor_email: str) -> None:
 
     progress.empty()
 
-    if epic_key:
-        jira_url = f"{JIRA_BASE_URL}/browse/{epic_key}"
-        st.success(
-            f"Epic **[{epic_key}]({jira_url})** created with {len(subtask_keys)} task(s).  \n"
-            f"Subtasks: {', '.join(subtask_keys) or 'none'}"
-        )
+    if result["epics"]:
+        # Show one success line per epic
+        for proj, epic_key in result["epics"].items():
+            jira_url = f"{JIRA_BASE_URL}/browse/{epic_key}"
+            tasks_in_proj = [k for k in result["subtask_keys"] if k.startswith(f"{proj}-")]
+            st.success(
+                f"**{proj}** — Epic **[{epic_key}]({jira_url})** "
+                f"with {len(tasks_in_proj)} task(s): {', '.join(tasks_in_proj) or 'none'}"
+            )
+
+        # Use the first epic as the primary for Sheets/email
+        primary_proj = project_keys[0]
+        primary_epic = result["epics"][primary_proj]
+        primary_url = f"{JIRA_BASE_URL}/browse/{primary_epic}"
+        all_epics_str = ", ".join(f"{p}:{k}" for p, k in result["epics"].items())
 
         # Google Sheets
         try:
@@ -110,11 +131,11 @@ def run_ticket_creation(deal: dict, actor_email: str) -> None:
                 "contact_email": deal.get("contact_email", ""),
                 "deal_stage": deal.get("deal_stage", ""),
                 "deal_owner": deal.get("owner_id", ""),
-                "epic_key": epic_key,
+                "epic_key": all_epics_str,
                 "epic_status": "To Do",
                 "tickets_created_at": format_timestamp(),
                 "tickets_created_by": actor_email,
-                "jira_url": jira_url,
+                "jira_url": primary_url,
             })
             sheets.append_audit_log(
                 action="TICKETS_CREATED",
@@ -122,21 +143,21 @@ def run_ticket_creation(deal: dict, actor_email: str) -> None:
                 details={
                     "deal_id": deal["deal_id"],
                     "customer_name": deal["deal_name"],
-                    "epic_key": epic_key,
-                    "subtask_keys": ", ".join(subtask_keys),
+                    "epic_key": all_epics_str,
+                    "subtask_keys": ", ".join(result["subtask_keys"]),
                 },
             )
             st.caption("Dashboard and audit log updated in Google Sheets.")
         except Exception as e:
             st.warning(f"Sheets update failed (tickets were still created in Jira): {e}")
 
-        # Slack
+        # Email
         try:
             email_client.send_onboarding_notification(
                 customer_name=deal["deal_name"],
-                epic_key=epic_key,
-                jira_url=jira_url,
-                subtask_keys=subtask_keys,
+                epic_key=all_epics_str,
+                jira_url=primary_url,
+                subtask_keys=result["subtask_keys"],
                 actor_email=actor_email,
             )
             if NOTIFY_EMAIL_TO:
@@ -270,8 +291,8 @@ with tab_onboard:
                 customer_name=deal["deal_name"],
                 deal_id=deal["deal_id"],
             )
-            preview_df = pd.DataFrame(preview)[["step", "summary", "assignee_email"]]
-            preview_df.columns = ["Step", "Ticket Summary", "Assignee"]
+            preview_df = pd.DataFrame(preview)[["step", "project_key", "summary", "assignee_email"]]
+            preview_df.columns = ["Step", "Project", "Ticket Summary", "Assignee"]
             st.dataframe(preview_df, use_container_width=True, hide_index=True)
 
             with st.expander("View full descriptions"):
