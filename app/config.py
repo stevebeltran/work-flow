@@ -1,9 +1,18 @@
 import os
+import ssl
+import certifi
 from dotenv import load_dotenv
+
+# Fix SSL certificate verification on Windows with Python 3.12
+os.environ["SSL_CERT_FILE"] = certifi.where()
+os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+ssl.create_default_context = lambda *a, **kw: ssl.create_default_context(
+    *a, cafile=certifi.where(), **kw
+)
 
 # Always resolve paths relative to the project root (where .env lives)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(_PROJECT_ROOT, ".env"))
+load_dotenv(os.path.join(_PROJECT_ROOT, ".env"), override=True)
 
 # These are always required
 _REQUIRED = [

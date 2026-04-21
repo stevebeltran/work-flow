@@ -23,6 +23,11 @@ _spreadsheet: gspread.Spreadsheet | None = None
 def _get_spreadsheet() -> gspread.Spreadsheet:
     global _client, _spreadsheet
     if _spreadsheet is None:
+        print(f"[sheets_client] SA JSON : {GOOGLE_SA_JSON_PATH}")
+        print(f"[sheets_client] Sheet ID: {GOOGLE_SHEET_ID}")
+        with open(GOOGLE_SA_JSON_PATH) as f:
+            sa_email = json.load(f).get("client_email", "unknown")
+        print(f"[sheets_client] SA email: {sa_email}")
         creds = Credentials.from_service_account_file(GOOGLE_SA_JSON_PATH, scopes=_SCOPES)
         _client = gspread.authorize(creds)
         _spreadsheet = _client.open_by_key(GOOGLE_SHEET_ID)
